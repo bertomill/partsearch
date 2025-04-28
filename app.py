@@ -38,7 +38,28 @@ try:
     if not firebase_admin._apps:
         # Check if the service account file exists
         cred_path = 'firebase-credentials.json'
-        if os.path.exists(cred_path):
+        # Check for credentials in environment variable (for Vercel)
+        firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS')
+        
+        if firebase_creds_json:
+            # Use credentials from environment variable
+            import json
+            import tempfile
+            
+            # Create a temporary file to store the credentials
+            with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as temp_file:
+                temp_file.write(firebase_creds_json.encode())
+                temp_cred_path = temp_file.name
+            
+            # Initialize with the temporary credentials file
+            cred = credentials.Certificate(temp_cred_path)
+            firebase_admin.initialize_app(cred)
+            
+            # Remove the temporary file
+            os.unlink(temp_cred_path)
+            
+            print("Firebase initialized with credentials from environment variable")
+        elif os.path.exists(cred_path):
             # Use the service account credentials file
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
@@ -386,7 +407,7 @@ def delete_search(search_id):
 if __name__ == '__main__':
     # For local development use debug mode and a specific port
     # In production, the port will be provided by the hosting environment
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 8081))
     # Only use debug mode in local development
     is_dev = os.environ.get('VERCEL_ENV') is None and os.environ.get('GAE_ENV') is None
     app.run(host='0.0.0.0', port=port, debug=is_dev) 
