@@ -1,0 +1,6 @@
+Flask
+tavily-python
+python-dotenv
+openai
+firebase-admin
+gunicorn 

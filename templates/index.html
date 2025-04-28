@@ -1,0 +1,226 @@
+<!-- templates/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Company Metric Finder</title>
+
+    <!-- Add Bootstrap CSS from CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+
+    <!-- Add Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <!-- Remove the old basic inline styles -->
+    <style>
+        /* We can keep minor custom styles if needed, but let Bootstrap handle most */
+        body { padding-top: 2rem; padding-bottom: 2rem; } /* Add some padding */
+    </style>
+</head>
+<body>
+
+    <!-- Use Bootstrap's container class for better layout and margins -->
+    <div class="container">
+
+        <!-- Use Bootstrap's display class for a larger heading -->
+        <h1 class="mb-4">Company Metric Finder</h1>
+
+        <!-- The form itself doesn't need specific styling, but its contents do -->
+        <form action="/" method="post">
+            <!-- Use Bootstrap's margin-bottom utility class (mb-3) for spacing -->
+            <div class="mb-3">
+                <!-- Apply Bootstrap's form label class -->
+                <label for="company" class="form-label">Company Name:</label>
+                <!-- Apply Bootstrap's form control class to style the input -->
+                <input type="text" class="form-control" id="company" name="company" required>
+            </div>
+            <div class="mb-3">
+                <!-- Apply Bootstrap's form label class -->
+                <label for="metric" class="form-label">Metric to Find:</label>
+                <!-- Apply Bootstrap's form control class -->
+                <input type="text" class="form-control" id="metric" name="metric" required>
+            </div>
+            <div>
+                <!-- Apply Bootstrap's button classes (btn, btn-primary) -->
+                <input type="submit" class="btn btn-primary" value="Find Metric">
+            </div>
+        </form>
+
+        <!-- Display error messages if they exist -->
+        {% if error %}
+            <div class="alert alert-danger mt-4" role="alert">
+                {{ error }}
+            </div>
+        {% endif %}
+
+        <!-- Display search query if it exists -->
+        {% if search_query %}
+            <div class="mt-4 mb-2">
+                <h5>Search: <span class="text-muted">{{ search_query }}</span></h5>
+            </div>
+        {% endif %}
+
+        <!-- Main result area - Only display if results exist -->
+        {% if search_results %}
+            
+            <!-- All Search Results / Web Search Sources -->
+            <h5 class="mt-4 mb-3">Search Results:</h5>
+            
+            <div class="row row-cols-1 g-4 mb-4">
+                {% for result in search_results %}
+                <div class="col">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="card-title mb-0">
+                                    <a href="{{ result.url }}" target="_blank" class="text-decoration-none">
+                                        {{ result.title }}
+                                    </a>
+                                </h6>
+                                <span class="badge bg-secondary">Score: {{ (result.score * 100)|round(1) }}%</span>
+                            </div>
+                            <p class="card-text">{{ result.content }}</p>
+                            <div class="text-muted small">
+                                <a href="{{ result.url }}" target="_blank" class="text-decoration-none">
+                                    {{ result.url }}
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- AI Analysis of the search results -->
+            {% if synthesized_answer %}
+            <div class="card mb-4 bg-light shadow-sm border-info">
+                <div class="card-header bg-info text-white d-flex align-items-center">
+                    {% if is_ai_answer %}
+                    <i class="bi bi-robot me-2"></i>
+                    <h5 class="card-title mb-0">AI Analysis</h5>
+                    <span class="badge bg-light text-dark ms-2">GPT</span>
+                    {% else %}
+                    <i class="bi bi-graph-up me-2"></i>
+                    <h5 class="card-title mb-0">Smart Analysis</h5>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <p class="card-text">{{ synthesized_answer }}</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Conclusion / Final Answer -->
+            <div class="card mb-4 border-success shadow-sm">
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-check-circle-fill me-2"></i>Final Answer
+                    </h5>
+                    <button id="saveButton" class="btn btn-light btn-sm">
+                        <i class="bi bi-cloud-arrow-up"></i> Save Result
+                    </button>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">{{ final_answer }}</p>
+                </div>
+            </div>
+            
+            <!-- Toast for save notifications -->
+            <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 5">
+                <div id="saveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-success text-white">
+                        <i class="bi bi-check-circle me-2"></i>
+                        <strong class="me-auto">Success</strong>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        Search result saved successfully!
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error toast -->
+            <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 5">
+                <div id="errorToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-danger text-white">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong class="me-auto">Error</strong>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body" id="errorToastBody">
+                        An error occurred while saving.
+                    </div>
+                </div>
+            </div>
+
+        {% elif result %}
+            <!-- Fallback to the original result display if no multiple results -->
+            <div class="alert alert-info mt-4" role="alert">
+                {{ result }}
+            </div>
+        {% endif %}
+
+    </div> <!-- End of container -->
+
+    <!-- Add Bootstrap JavaScript bundle (needed for some components, good practice to include) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+    <!-- Script for saving search results -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get references to elements
+            const saveButton = document.getElementById('saveButton');
+            const saveToast = document.getElementById('saveToast');
+            const errorToast = document.getElementById('errorToast');
+            const errorToastBody = document.getElementById('errorToastBody');
+            
+            // Initialize toasts
+            const saveToastInstance = new bootstrap.Toast(saveToast);
+            const errorToastInstance = new bootstrap.Toast(errorToast);
+            
+            // Only set up click handler if we have search results
+            if (saveButton) {
+                saveButton.addEventListener('click', async function() {
+                    try {
+                        // Create data object from the current search
+                        const data = {
+                            company: '{{ request.form.get("company") }}',
+                            metric: '{{ request.form.get("metric") }}',
+                            final_answer: '{{ final_answer|replace("'", "\\'") }}',
+                            analysis: '{{ synthesized_answer|replace("'", "\\'") }}',
+                            search_results: JSON.parse('{{ search_results|tojson }}')
+                        };
+                        
+                        // Send data to server
+                        const response = await fetch('/save_search', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(data)
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            // Show success toast
+                            saveToastInstance.show();
+                        } else {
+                            // Show error toast
+                            errorToastBody.textContent = result.error || 'An error occurred while saving.';
+                            errorToastInstance.show();
+                        }
+                    } catch (error) {
+                        console.error('Error saving search:', error);
+                        // Show error toast
+                        errorToastBody.textContent = 'An error occurred while saving.';
+                        errorToastInstance.show();
+                    }
+                });
+            }
+        });
+    </script>
+
+</body>
+</html> 

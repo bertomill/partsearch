@@ -1,0 +1,36 @@
+# Environment variables
+.env
+
+# Python virtual environment
+.venv/
+venv/
+ENV/
+
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Flask stuff
+instance/
+.webassets-cache
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Firebase
+firebase-credentials.json
+
+# Logs
+*.log 

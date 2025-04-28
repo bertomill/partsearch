@@ -1,0 +1,10 @@
+runtime: python39
+entrypoint: gunicorn -b :$PORT app:app
+
+env_variables:
+  # These will need to be set in the Google Cloud Console
+  # as environment variables or through the gcloud command
+  TAVILY_API_KEY: ''
+  OPENAI_API_KEY: ''
+  
+instance_class: F2 
