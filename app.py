@@ -32,6 +32,17 @@ app = Flask(__name__)
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
+# Get Firebase config from environment variables, falling back to imported config
+firebase_config = {
+    "apiKey": os.environ.get("FIREBASE_API_KEY", FIREBASE_CONFIG.get("apiKey")),
+    "authDomain": os.environ.get("FIREBASE_AUTH_DOMAIN", FIREBASE_CONFIG.get("authDomain")),
+    "projectId": os.environ.get("FIREBASE_PROJECT_ID", FIREBASE_CONFIG.get("projectId")),
+    "storageBucket": os.environ.get("FIREBASE_STORAGE_BUCKET", FIREBASE_CONFIG.get("storageBucket")),
+    "messagingSenderId": os.environ.get("FIREBASE_MESSAGING_SENDER_ID", FIREBASE_CONFIG.get("messagingSenderId")),
+    "appId": os.environ.get("FIREBASE_APP_ID", FIREBASE_CONFIG.get("appId")),
+    "measurementId": os.environ.get("FIREBASE_MEASUREMENT_ID", FIREBASE_CONFIG.get("measurementId"))
+}
+
 # Initialize Firebase Admin
 try:
     # Initialize Firebase App if not already initialized
@@ -70,14 +81,14 @@ try:
             try:
                 # Try to initialize with application default credentials first
                 firebase_admin.initialize_app(options={
-                    'projectId': FIREBASE_CONFIG['projectId'],
+                    'projectId': firebase_config["projectId"],
                 })
                 print("Firebase initialized with application default credentials")
             except Exception as credential_error:
                 print(f"Falling back to unauthenticated mode: {credential_error}")
                 # Fall back to a minimal configuration (limited capabilities)
                 firebase_admin.initialize_app(options={
-                    'projectId': FIREBASE_CONFIG['projectId'],
+                    'projectId': firebase_config["projectId"],
                 }, name='minimal')
                 print("Firebase initialized in minimal mode")
     
