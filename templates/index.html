@@ -23,8 +23,13 @@
     <!-- Use Bootstrap's container class for better layout and margins -->
     <div class="container">
 
-        <!-- Use Bootstrap's display class for a larger heading -->
-        <h1 class="mb-4">Company Metric Finder</h1>
+        <!-- Header with navigation -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="mb-0">Company Metric Finder</h1>
+            <a href="/saved_searches" class="btn btn-outline-primary">
+                <i class="bi bi-bookmark"></i> Saved Searches
+            </a>
+        </div>
 
         <!-- The form itself doesn't need specific styling, but its contents do -->
         <form action="/" method="post">

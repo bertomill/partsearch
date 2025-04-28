@@ -34,3 +34,4 @@ firebase-credentials.json
 
 # Logs
 *.log 
+.vercel

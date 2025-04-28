@@ -36,19 +36,29 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 try:
     # Initialize Firebase App if not already initialized
     if not firebase_admin._apps:
-        # For deployment: Use a certificate if provided, otherwise try application default credentials
-        # For local development: Fall back to using just the project ID
-        try:
-            # Try to initialize with application default credentials first
-            firebase_admin.initialize_app(options={
-                'projectId': FIREBASE_CONFIG['projectId'],
-            })
-        except Exception as credential_error:
-            print(f"Falling back to unauthenticated mode: {credential_error}")
-            # Fall back to a minimal configuration (limited capabilities)
-            firebase_admin.initialize_app(options={
-                'projectId': FIREBASE_CONFIG['projectId'],
-            }, name='minimal')
+        # Check if the service account file exists
+        cred_path = 'firebase-credentials.json'
+        if os.path.exists(cred_path):
+            # Use the service account credentials file
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+            print("Firebase initialized with service account credentials")
+        else:
+            # For deployment: Use a certificate if provided, otherwise try application default credentials
+            # For local development: Fall back to using just the project ID
+            try:
+                # Try to initialize with application default credentials first
+                firebase_admin.initialize_app(options={
+                    'projectId': FIREBASE_CONFIG['projectId'],
+                })
+                print("Firebase initialized with application default credentials")
+            except Exception as credential_error:
+                print(f"Falling back to unauthenticated mode: {credential_error}")
+                # Fall back to a minimal configuration (limited capabilities)
+                firebase_admin.initialize_app(options={
+                    'projectId': FIREBASE_CONFIG['projectId'],
+                }, name='minimal')
+                print("Firebase initialized in minimal mode")
     
     # Get a Firestore client
     db = firestore.client()
@@ -319,6 +329,57 @@ def save_search():
     
     except Exception as e:
         print(f"Error saving search: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# Route to view saved searches
+@app.route('/saved_searches', methods=['GET'])
+def view_saved_searches():
+    if not db:
+        return render_template('saved_searches.html', 
+                              error="Firebase not initialized", 
+                              searches=[])
+    
+    try:
+        # Get all saved searches from Firestore, ordered by timestamp (newest first)
+        searches_ref = db.collection('saved_searches').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(50)
+        searches = []
+        
+        # Convert Firestore documents to dictionary
+        for doc in searches_ref.stream():
+            search_data = doc.to_dict()
+            # Format timestamp if it exists
+            if 'timestamp' in search_data and search_data['timestamp']:
+                try:
+                    # Convert Firestore timestamp to Python datetime
+                    timestamp = search_data['timestamp']
+                    # Format the datetime for display
+                    search_data['formatted_time'] = timestamp.strftime('%B %d, %Y - %I:%M %p')
+                except Exception as e:
+                    search_data['formatted_time'] = 'Unknown time'
+            
+            searches.append(search_data)
+        
+        return render_template('saved_searches.html', searches=searches, error=None)
+    
+    except Exception as e:
+        print(f"Error retrieving saved searches: {e}")
+        return render_template('saved_searches.html', 
+                              error=f"Error retrieving saved searches: {e}", 
+                              searches=[])
+
+# Route to delete a saved search
+@app.route('/delete_search/<search_id>', methods=['POST'])
+def delete_search(search_id):
+    if not db:
+        return jsonify({"success": False, "error": "Firebase not initialized"}), 500
+    
+    try:
+        # Delete the document from Firestore
+        db.collection('saved_searches').document(search_id).delete()
+        return jsonify({"success": True}), 200
+    
+    except Exception as e:
+        print(f"Error deleting search: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 # This standard Python construct checks if the script is being run directly.

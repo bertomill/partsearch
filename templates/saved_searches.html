@@ -1,0 +1,218 @@
+<!-- templates/saved_searches.html -->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Saved Searches - Company Metric Finder</title>
+
+    <!-- Add Bootstrap CSS from CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+
+    <!-- Add Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <style>
+        body { padding-top: 2rem; padding-bottom: 2rem; }
+    </style>
+</head>
+<body>
+
+    <!-- Use Bootstrap's container class for better layout and margins -->
+    <div class="container">
+
+        <!-- Header with navigation -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Saved Searches</h1>
+            <a href="/" class="btn btn-outline-primary">
+                <i class="bi bi-search"></i> New Search
+            </a>
+        </div>
+
+        <!-- Display error messages if they exist -->
+        {% if error %}
+            <div class="alert alert-danger mt-4" role="alert">
+                {{ error }}
+            </div>
+        {% endif %}
+
+        <!-- Display saved searches -->
+        {% if searches %}
+            <div class="row">
+                {% for search in searches %}
+                <div class="col-md-12 mb-4">
+                    <div class="card shadow-sm" id="search-card-{{ search.id }}">
+                        <div class="card-header d-flex justify-content-between align-items-center bg-light">
+                            <h5 class="mb-0">{{ search.company }} - {{ search.metric }}</h5>
+                            <div>
+                                <small class="text-muted me-3">{{ search.formatted_time }}</small>
+                                <button class="btn btn-sm btn-outline-danger delete-btn" data-search-id="{{ search.id }}">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <h6 class="card-subtitle text-muted mb-3">Query: {{ search.query }}</h6>
+                            
+                            <!-- Final Answer Section -->
+                            <div class="mb-3 p-3 border-start border-success border-3 bg-light">
+                                <h6 class="text-success"><i class="bi bi-check-circle"></i> Final Answer:</h6>
+                                <p>{{ search.final_answer }}</p>
+                            </div>
+                            
+                            <!-- Analysis Section (Collapsible) -->
+                            <div class="mb-3">
+                                <a class="text-decoration-none" data-bs-toggle="collapse" href="#analysis-{{ search.id }}" role="button" aria-expanded="false">
+                                    <h6><i class="bi bi-chevron-down"></i> Analysis</h6>
+                                </a>
+                                <div class="collapse" id="analysis-{{ search.id }}">
+                                    <div class="card card-body bg-light">
+                                        {{ search.analysis }}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Search Results Section (Collapsible) -->
+                            <div>
+                                <a class="text-decoration-none" data-bs-toggle="collapse" href="#results-{{ search.id }}" role="button" aria-expanded="false">
+                                    <h6><i class="bi bi-chevron-down"></i> Search Results</h6>
+                                </a>
+                                <div class="collapse" id="results-{{ search.id }}">
+                                    <div class="card card-body bg-light">
+                                        {% if search.search_results %}
+                                            {% for result in search.search_results %}
+                                                <div class="mb-3 pb-3 border-bottom">
+                                                    <h6>
+                                                        <a href="{{ result.url }}" target="_blank" class="text-decoration-none">
+                                                            {{ result.title }}
+                                                        </a>
+                                                    </h6>
+                                                    <p>{{ result.content }}</p>
+                                                    <small class="text-muted">
+                                                        <a href="{{ result.url }}" target="_blank" class="text-decoration-none">
+                                                            {{ result.url }}
+                                                        </a>
+                                                    </small>
+                                                </div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <p class="text-muted">No detailed search results available.</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> No saved searches found. Try searching for company metrics from the homepage.
+            </div>
+        {% endif %}
+
+        <!-- Toast for notifications -->
+        <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 5">
+            <div id="deleteToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header bg-success text-white">
+                    <i class="bi bi-check-circle me-2"></i>
+                    <strong class="me-auto">Success</strong>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body">
+                    Search deleted successfully!
+                </div>
+            </div>
+        </div>
+
+        <!-- Error toast -->
+        <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 5">
+            <div id="errorToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header bg-danger text-white">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong class="me-auto">Error</strong>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body" id="errorToastBody">
+                    An error occurred.
+                </div>
+            </div>
+        </div>
+
+    </div> <!-- End of container -->
+
+    <!-- Add Bootstrap JavaScript bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+    <!-- Script for deleting searches -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get references to toasts
+            const deleteToast = document.getElementById('deleteToast');
+            const errorToast = document.getElementById('errorToast');
+            const errorToastBody = document.getElementById('errorToastBody');
+            
+            // Initialize toasts
+            const deleteToastInstance = new bootstrap.Toast(deleteToast);
+            const errorToastInstance = new bootstrap.Toast(errorToast);
+            
+            // Set up click handlers for all delete buttons
+            const deleteButtons = document.querySelectorAll('.delete-btn');
+            deleteButtons.forEach(button => {
+                button.addEventListener('click', async function() {
+                    const searchId = this.getAttribute('data-search-id');
+                    
+                    if (confirm('Are you sure you want to delete this saved search?')) {
+                        try {
+                            // Send delete request to server
+                            const response = await fetch(`/delete_search/${searchId}`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                }
+                            });
+                            
+                            const result = await response.json();
+                            
+                            if (result.success) {
+                                // Remove the card from the UI
+                                const card = document.getElementById(`search-card-${searchId}`);
+                                if (card) {
+                                    card.parentNode.remove();
+                                }
+                                
+                                // Show success toast
+                                deleteToastInstance.show();
+                                
+                                // If no more searches, add the "no searches" message
+                                const remainingCards = document.querySelectorAll('[id^="search-card-"]');
+                                if (remainingCards.length === 0) {
+                                    const container = document.querySelector('.container');
+                                    const row = document.querySelector('.row');
+                                    if (row) row.remove();
+                                    
+                                    const noSearchesAlert = document.createElement('div');
+                                    noSearchesAlert.className = 'alert alert-info';
+                                    noSearchesAlert.innerHTML = '<i class="bi bi-info-circle"></i> No saved searches found. Try searching for company metrics from the homepage.';
+                                    container.appendChild(noSearchesAlert);
+                                }
+                            } else {
+                                // Show error toast
+                                errorToastBody.textContent = result.error || 'An error occurred while deleting.';
+                                errorToastInstance.show();
+                            }
+                        } catch (error) {
+                            console.error('Error deleting search:', error);
+                            // Show error toast
+                            errorToastBody.textContent = 'An error occurred while deleting.';
+                            errorToastInstance.show();
+                        }
+                    }
+                });
+            });
+        });
+    </script>
+
+</body>
+</html> 
