@@ -77,6 +77,35 @@
             text-align: center;
             margin: 20px 0;
         }
+        /* Citation styles */
+        .citation {
+            font-size: 0.8em;
+            vertical-align: super;
+            color: #0d6efd;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .sources-section {
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px solid #dee2e6;
+        }
+        .sources-section h6 {
+            font-weight: bold;
+            color: #495057;
+        }
+        .sources-list {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .sources-list li {
+            margin-bottom: 5px;
+        }
+        .source-url {
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 0.85em;
+        }
     </style>
 </head>
 <body>
@@ -178,6 +207,31 @@
                             </div>
                             
                             <form id="followupForm">
+                                <div class="mb-2">
+                                    <div class="d-flex align-items-center">
+                                        <label class="form-label mb-0 me-3">Search options:</label>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="searchType" id="searchNone" value="none" checked>
+                                            <label class="form-check-label" for="searchNone">No search</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="searchType" id="searchTavily" value="tavily">
+                                            <label class="form-check-label" for="searchTavily">Tavily</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="searchType" id="searchPerplexity" value="perplexity">
+                                            <label class="form-check-label" for="searchPerplexity">Perplexity</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="searchType" id="searchSearch1API" value="search1api">
+                                            <label class="form-check-label" for="searchSearch1API">Search1API</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="searchType" id="searchAll" value="all">
+                                            <label class="form-check-label" for="searchAll">All Sources</label>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div class="input-group">
                                     <input type="text" class="form-control" id="followupQuestion" 
                                         placeholder="Ask a follow-up question about this earnings call...">
@@ -338,14 +392,27 @@
             const question = document.getElementById('followupQuestion').value.trim();
             if (!question) return;
             
+            // Get selected search type
+            const searchType = document.querySelector('input[name="searchType"]:checked').value;
+            
             // Clear input
             document.getElementById('followupQuestion').value = '';
             
             // Add user message to conversation
             addMessageToHistory('user', question);
             
-            // Add loading message
-            addMessageToHistory('assistant', '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Thinking...');
+            // Add loading message with search information
+            let loadingMessage = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> ';
+            if (searchType === 'none') {
+                loadingMessage += 'Thinking...';
+            } else if (searchType === 'both') {
+                loadingMessage += 'Searching with Tavily and Perplexity...';
+            } else if (searchType === 'all') {
+                loadingMessage += 'Searching with all available sources...';
+            } else {
+                loadingMessage += `Searching with ${searchType}...`;
+            }
+            addMessageToHistory('assistant', loadingMessage);
             
             try {
                 const response = await fetch('/followup_question', {
@@ -355,7 +422,8 @@
                     },
                     body: JSON.stringify({
                         analysis_id: analysisId,
-                        question: question
+                        question: question,
+                        search_type: searchType
                     })
                 });
                 
@@ -365,8 +433,36 @@
                     throw new Error(data.error);
                 }
                 
+                // Display search results if available
+                let answerHtml = data.answer;
+                
+                if (data.search_results && data.search_results.length > 0) {
+                    // Group results by source
+                    const resultsBySource = {};
+                    data.search_results.forEach(result => {
+                        if (!resultsBySource[result.source]) {
+                            resultsBySource[result.source] = [];
+                        }
+                        resultsBySource[result.source].push(result);
+                    });
+                    
+                    answerHtml += '<div class="mt-4"><h6 class="text-muted">Search Sources:</h6>';
+                    
+                    // Display each source group
+                    Object.keys(resultsBySource).forEach(source => {
+                        answerHtml += `<div class="mb-2"><strong class="text-primary">${source}:</strong>`;
+                        answerHtml += '<ul class="search-sources small text-muted">';
+                        resultsBySource[source].forEach(result => {
+                            answerHtml += `<li><a href="${result.url}" target="_blank">${result.title}</a></li>`;
+                        });
+                        answerHtml += '</ul></div>';
+                    });
+                    
+                    answerHtml += '</div>';
+                }
+                
                 // Replace loading message with actual response
-                updateLastAssistantMessage(data.answer);
+                updateLastAssistantMessage(answerHtml);
                 
             } catch (error) {
                 console.error('Error with follow-up question:', error);
@@ -398,7 +494,87 @@
                 const lastMessage = assistantMessages[assistantMessages.length - 1];
                 const contentDiv = lastMessage.querySelector('.assistant-content');
                 if (contentDiv) {
-                    contentDiv.innerHTML = content;
+                    // Format citations if present - look for [1], [2], etc. patterns
+                    let formattedContent = content;
+                    
+                    // Check if content has a "Sources:" section
+                    if (content.includes("Sources:")) {
+                        // Split content into main text and sources section
+                        const parts = content.split(/Sources:/i);
+                        if (parts.length > 1) {
+                            let mainText = parts[0];
+                            let sourcesText = parts[1];
+                            
+                            // Format the sources section
+                            sourcesText = sourcesText.trim();
+                            const sourceLines = sourcesText.split('\n').filter(line => line.trim());
+                            
+                            // Process numbered citations in the main text ([1], [2], etc.)
+                            mainText = mainText.replace(/\[(\d+)\]/g, function(match, number) {
+                                return `<span class="citation" title="See source ${number}">[${number}]</span>`;
+                            });
+                            
+                            // Create a formatted sources section
+                            let sourcesHtml = '<div class="sources-section">';
+                            sourcesHtml += '<h6>Sources:</h6>';
+                            sourcesHtml += '<ol class="sources-list">';
+                            
+                            // Process each source
+                            sourceLines.forEach(line => {
+                                // Extract URLs if present
+                                const urlRegex = /(https?:\/\/[^\s]+)/g;
+                                let sourceLineWithLinks = line.replace(urlRegex, '<a href="$1" target="_blank" class="source-url">$1</a>');
+                                
+                                // Check if line starts with a number (like "1.")
+                                if (!/^\d+\./.test(sourceLineWithLinks)) {
+                                    // If not numbered, try to extract the number from beginning of line
+                                    const numMatch = sourceLineWithLinks.match(/^\[?(\d+)\]?/);
+                                    if (numMatch) {
+                                        sourceLineWithLinks = sourceLineWithLinks.replace(/^\[?(\d+)\]?\s*/, '');
+                                        sourcesHtml += `<li value="${numMatch[1]}">${sourceLineWithLinks}</li>`;
+                                    } else {
+                                        sourcesHtml += `<li>${sourceLineWithLinks}</li>`;
+                                    }
+                                } else {
+                                    // Already numbered, just remove the number
+                                    const numMatch = sourceLineWithLinks.match(/^(\d+)\./);
+                                    if (numMatch) {
+                                        sourceLineWithLinks = sourceLineWithLinks.replace(/^\d+\.\s*/, '');
+                                        sourcesHtml += `<li value="${numMatch[1]}">${sourceLineWithLinks}</li>`;
+                                    } else {
+                                        sourcesHtml += `<li>${sourceLineWithLinks}</li>`;
+                                    }
+                                }
+                            });
+                            
+                            sourcesHtml += '</ol></div>';
+                            
+                            // Combine the formatted parts
+                            formattedContent = mainText + sourcesHtml;
+                        }
+                    } else {
+                        // If no explicit sources section, still format any citations
+                        formattedContent = content.replace(/\[(\d+)\]/g, '<span class="citation" title="See source $1">[${1}]</span>');
+                    }
+                    
+                    contentDiv.innerHTML = formattedContent;
+                    
+                    // Add click event to citations to scroll to sources
+                    setTimeout(() => {
+                        document.querySelectorAll('.citation').forEach(citation => {
+                            citation.addEventListener('click', function() {
+                                const sourceNum = this.textContent.replace(/\[|\]/g, '');
+                                const sourceElement = document.querySelector(`.sources-list li[value="${sourceNum}"]`);
+                                if (sourceElement) {
+                                    sourceElement.scrollIntoView({ behavior: 'smooth' });
+                                    sourceElement.style.backgroundColor = '#fffde7';
+                                    setTimeout(() => {
+                                        sourceElement.style.backgroundColor = '';
+                                    }, 2000);
+                                }
+                            });
+                        });
+                    }, 100);
                 }
             }
         }

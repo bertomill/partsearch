@@ -6,3 +6,4 @@ firebase-admin
 gunicorn
 google-generativeai 
 anthropic>=0.21.0
+requests

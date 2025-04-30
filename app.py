@@ -17,6 +17,8 @@ from datetime import datetime, timedelta
 from openai import OpenAI
 # Import Google's Gemini for earnings call analysis (large context)
 import google.generativeai as genai
+# Import requests for API calls
+import requests
 # Import Firebase Admin SDK
 import firebase_admin
 from firebase_admin import credentials, firestore, auth
@@ -48,6 +50,8 @@ app.permanent_session_lifetime = timedelta(days=1)
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY")
+SEARCH1API_KEY = os.environ.get("SEARCH1API_KEY")
 
 # Initialize Tavily Client globally
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
@@ -910,6 +914,7 @@ def followup_question():
     data = request.json
     analysis_id = data.get('analysis_id')
     question = data.get('question')
+    search_type = data.get('search_type', 'none')  # Options: 'none', 'tavily', 'perplexity', 'search1api', 'all'
     
     if not analysis_id or not question:
         return jsonify({'error': 'Missing required parameters'}), 400
@@ -942,8 +947,232 @@ def followup_question():
                 conversation_history += f"Q: {conv_data.get('question', '')}\n"
                 conversation_history += f"A: {conv_data.get('answer', '')}\n\n"
             
+            # Get additional context from search if requested
+            additional_context = ""
+            search_results = []
+            
+            # Tavily search for new information if requested
+            if search_type in ['tavily', 'all'] and tavily_client:
+                try:
+                    print(f"Searching Tavily for follow-up information: {company_name} {question}")
+                    tavily_query = f"{company_name} {question} earnings financial data"
+                    tavily_response = tavily_client.search(
+                        query=tavily_query,
+                        search_depth="advanced",
+                        include_raw_content=True,
+                        max_results=3
+                    )
+                    
+                    if tavily_response and tavily_response.get('results'):
+                        tavily_context = []
+                        for result in tavily_response['results']:
+                            content = result.get('raw_content') or result.get('content')
+                            if content:
+                                tavily_context.append(f"Source (Tavily): {result.get('url', 'Unknown')}\nContent:\n{content}\n")
+                                search_results.append({
+                                    'source': 'Tavily',
+                                    'url': result.get('url', 'Unknown'),
+                                    'title': result.get('title', 'Unknown'),
+                                    'snippet': result.get('content', '')[:200] + '...' if result.get('content') else 'No preview available'
+                                })
+                        
+                        additional_context += "\n\nAdditional Tavily Search Results:\n\n" + "\n\n".join(tavily_context)
+                    
+                except Exception as e:
+                    print(f"Error searching Tavily: {e}")
+                    additional_context += "\n\nTavily search was attempted but failed."
+            
+            # Perplexity search for new information if requested
+            if search_type in ['perplexity', 'all'] and PERPLEXITY_API_KEY:
+                try:
+                    print(f"Searching Perplexity for follow-up information: {company_name} {question}")
+                    perplexity_query = f"{company_name} {question} earnings financial data"
+                    
+                    perplexity_url = "https://api.perplexity.ai/chat/completions"
+                    perplexity_headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {PERPLEXITY_API_KEY}"
+                    }
+                    perplexity_payload = {
+                        "model": "sonar-pro",
+                        "messages": [
+                            {"role": "system", "content": "You are a financial analyst retrieving factual information. Return the most reliable factual information about the company's financial data. IMPORTANT: Always include your sources with URLs in a 'Sources:' section at the end of your response. List each source on a new line."},
+                            {"role": "user", "content": perplexity_query}
+                        ]
+                    }
+                    
+                    perplexity_response = requests.post(perplexity_url, headers=perplexity_headers, json=perplexity_payload)
+                    perplexity_data = perplexity_response.json()
+                    
+                    if perplexity_data and perplexity_data.get('choices'):
+                        perplexity_content = perplexity_data['choices'][0]['message']['content']
+                        
+                        # Extract the main content and sources
+                        main_content = perplexity_content
+                        source_urls = []
+                        
+                        # Check for structured citations (top-level)
+                        citations = perplexity_data.get("citations", [])
+                        if not citations and perplexity_data.get("sources"):
+                            citations = perplexity_data.get("sources", [])
+                            
+                        # If we have structured citations, use them
+                        if citations and isinstance(citations, list):
+                            for citation in citations:
+                                if isinstance(citation, dict) and citation.get('url'):
+                                    source_urls.append({
+                                        'source': 'Perplexity',
+                                        'url': citation.get('url'),
+                                        'title': citation.get('title', citation.get('url'))
+                                    })
+                        
+                        # If no structured citations, try to parse from text
+                        elif "Sources:" in perplexity_content:
+                            parts = perplexity_content.split("Sources:", 1)
+                            main_content = parts[0].strip()
+                            sources_text = parts[1].strip()
+                            
+                            # Extract URLs using regex
+                            import re
+                            urls = re.findall(r'https?://[^\s\)]+', sources_text)
+                            
+                            # For each URL, extract the surrounding text as a title
+                            lines = sources_text.split('\n')
+                            for line in lines:
+                                line = line.strip()
+                                if not line:
+                                    continue
+                                    
+                                # Find URLs in this line
+                                line_urls = re.findall(r'https?://[^\s\)]+', line)
+                                if line_urls:
+                                    url = line_urls[0]
+                                    # Use text before URL as title, or the whole line if no other text
+                                    title = line.replace(url, '').strip() or url
+                                    source_urls.append({
+                                        'source': 'Perplexity',
+                                        'url': url,
+                                        'title': title
+                                    })
+                                elif line and not any(url in line for url in urls):
+                                    # This might be a source without URL
+                                    source_urls.append({
+                                        'source': 'Perplexity',
+                                        'url': "#",
+                                        'title': line
+                                    })
+                        
+                        # If still no sources, check if the content looks like a list of URLs
+                        if not source_urls and '\n' in perplexity_content:
+                            lines = perplexity_content.split('\n')
+                            for line in lines:
+                                if line.strip().startswith('http'):
+                                    source_urls.append({
+                                        'source': 'Perplexity',
+                                        'url': line.strip(),
+                                        'title': "Reference"
+                                    })
+                        
+                        # Update the search results
+                        search_results.extend(source_urls)
+                        
+                        # Add the content to additional_context
+                        additional_context += f"\n\nAdditional Information from Perplexity:\n\n{main_content}\n"
+                        
+                    else:
+                        print(f"Error: Invalid response from Perplexity API")
+                        
+                except Exception as e:
+                    print(f"Error searching Perplexity: {e}")
+                    additional_context += "\n\nPerplexity search was attempted but failed."
+            
+            # Search1API search for new information if requested (replacing Firecrawl)
+            if search_type in ['search1api', 'all'] and SEARCH1API_KEY:
+                try:
+                    print(f"Searching Search1API for follow-up information: {company_name} {question}")
+                    search1api_query = f"{company_name} {question} earnings financial data"
+                    
+                    # Use Search1API's search endpoint
+                    search1api_url = "https://api.search1api.com/search"
+                    search1api_headers = {
+                        "Authorization": f"Bearer {SEARCH1API_KEY}",
+                        "Content-Type": "application/json"
+                    }
+                    search1api_payload = {
+                        "query": search1api_query,
+                        "search_service": "google",
+                        "max_results": 3,
+                        "crawl_results": 1,  # Crawl results to get content
+                        "image": False,
+                        "language": "en",
+                        "time_range": "year"  # Use year for more comprehensive results
+                    }
+                    
+                    search1api_response = requests.post(search1api_url, headers=search1api_headers, json=search1api_payload)
+                    search1api_data = search1api_response.json()
+                    
+                    # Also try the news endpoint for timely information
+                    news_url = "https://api.search1api.com/news"
+                    news_payload = {
+                        "query": search1api_query,
+                        "search_service": "google",
+                        "max_results": 2,
+                        "crawl_results": 1,
+                        "image": False,
+                        "language": "en",
+                        "time_range": "month"  # More recent for news
+                    }
+                    
+                    news_response = requests.post(news_url, headers=search1api_headers, json=news_payload)
+                    news_data = news_response.json()
+                    
+                    # Process search results
+                    if search1api_data and "results" in search1api_data:
+                        search1api_context = []
+                        for result in search1api_data["results"]:
+                            content = result.get('content') or result.get('snippet', '')
+                            if content:
+                                url = result.get('link', 'Unknown')
+                                title = result.get('title', 'Unknown')
+                                search1api_context.append(f"Source (Search1API): {url}\nTitle: {title}\nContent:\n{content}\n")
+                                search_results.append({
+                                    'source': 'Search1API',
+                                    'url': url,
+                                    'title': title,
+                                    'snippet': content[:200] + '...' if len(content) > 200 else content
+                                })
+                        
+                        if search1api_context:
+                            additional_context += "\n\nAdditional Search1API Results:\n\n" + "\n\n".join(search1api_context)
+                    
+                    # Process news results
+                    if news_data and "results" in news_data:
+                        news_context = []
+                        for result in news_data["results"]:
+                            content = result.get('content') or result.get('snippet', '')
+                            if content:
+                                url = result.get('link', 'Unknown')
+                                title = result.get('title', 'Unknown')
+                                news_context.append(f"Source (Search1API News): {url}\nTitle: {title}\nContent:\n{content}\n")
+                                search_results.append({
+                                    'source': 'Search1API News',
+                                    'url': url,
+                                    'title': title,
+                                    'snippet': content[:200] + '...' if len(content) > 200 else content
+                                })
+                        
+                        if news_context:
+                            additional_context += "\n\nAdditional Search1API News Results:\n\n" + "\n\n".join(news_context)
+                    
+                except Exception as e:
+                    print(f"Error searching Search1API: {e}")
+                    additional_context += "\n\nSearch1API search was attempted but failed."
+            
             # Create the prompt for the follow-up
-            system_prompt = "You are a financial analyst helping with earnings call follow-up questions. Use only the information from the original transcript and analysis to answer."
+            if search_type == 'none':
+                system_prompt = "You are a financial analyst helping with earnings call follow-up questions. Use only the information from the original transcript and analysis to answer."
+            else:
+                system_prompt = "You are a financial analyst helping with earnings call follow-up questions. You must cite your sources for factual information. When you mention a specific fact that comes from the search results, include a numbered citation like [1], [2], etc., and list the complete sources with their URLs at the end of your response. Each source should be clearly numbered to match your citations."
             
             user_prompt = f"""
             I previously asked for an analysis of {company_name}'s earnings call, and you provided the following analysis:
@@ -956,11 +1185,25 @@ def followup_question():
             
             Previous questions and answers about this analysis:
             {conversation_history}
+            """
             
-            Based on this information only, please answer this follow-up question:
+            if additional_context:
+                user_prompt += f"""
+                I've performed additional research to help answer this question and found:
+                {additional_context}
+                """
+            
+            user_prompt += f"""
+            Based on all available information, please answer this follow-up question:
             {question}
             
-            If the information to answer this question is not in the provided transcript or analysis, please state that clearly.
+            IMPORTANT FORMATTING INSTRUCTIONS:
+            1. If information is available in the additional search results but wasn't in the original transcript, clearly indicate this new information in your answer.
+            2. For each factual statement, especially numbers, statistics, or specific details from search results, include a numbered citation like [1].
+            3. At the end of your answer, include a "Sources:" section that lists all the references you used, numbered to match your citations.
+            4. For each source, include the full URL so users can verify the information.
+            
+            If you can't find the information to answer this question, please state that clearly.
             """
             
             # Use Claude for follow-up (similar to our main analysis)
@@ -1000,10 +1243,16 @@ def followup_question():
                 'user_id': user_id,
                 'question': question,
                 'answer': answer,
+                'search_type': search_type,
+                'search_results': search_results,
                 'timestamp': firestore.SERVER_TIMESTAMP
             })
             
-            return jsonify({'answer': answer})
+            return jsonify({
+                'answer': answer,
+                'search_results': search_results,
+                'search_type': search_type
+            })
         else:
             return jsonify({'error': 'Database not available'}), 500
             
