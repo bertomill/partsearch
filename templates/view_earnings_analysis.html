@@ -106,6 +106,42 @@
             font-family: monospace;
             font-size: 0.85em;
         }
+        .service-results {
+            border-left: 3px solid #0d6efd;
+            padding-left: 15px;
+            margin-bottom: 20px;
+        }
+        .search-results-container {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .generate-summary-btn {
+            transition: all 0.3s ease;
+        }
+        .result-item {
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #fff;
+        }
+        .result-title {
+            font-weight: 600;
+            color: #0d6efd;
+            margin-bottom: 5px;
+        }
+        .result-url {
+            font-size: 0.8rem;
+            color: #198754;
+            word-break: break-all;
+            margin-bottom: 8px;
+        }
+        .result-snippet {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
     </style>
 </head>
 <body>
@@ -401,72 +437,148 @@
             // Add user message to conversation
             addMessageToHistory('user', question);
             
-            // Add loading message with search information
-            let loadingMessage = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> ';
+            // Skip search results phase if "none" is selected
             if (searchType === 'none') {
-                loadingMessage += 'Thinking...';
-            } else if (searchType === 'both') {
-                loadingMessage += 'Searching with Tavily and Perplexity...';
-            } else if (searchType === 'all') {
-                loadingMessage += 'Searching with all available sources...';
-            } else {
-                loadingMessage += `Searching with ${searchType}...`;
+                // Add AI thinking message
+                addMessageToHistory('assistant', '<div class="spinner-border spinner-border-sm text-primary"></div> Thinking...');
+                try {
+                    // Call API with generate_answer=true
+                    const response = await fetch('/followup_question', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            analysis_id: analysisId,
+                            question: question,
+                            search_type: 'none',
+                            generate_answer: true
+                        })
+                    });
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error);
+                    
+                    // Display the answer
+                    updateLastAssistantMessage(data.answer);
+                } catch (error) {
+                    console.error('Error with follow-up question:', error);
+                    updateLastAssistantMessage(`<div class="alert alert-danger">Error: ${error.message}</div>`);
+                }
+                return;
             }
-            addMessageToHistory('assistant', loadingMessage);
             
+            // PHASE 1: Search Results
+            // Add loading message for search
+            addMessageToHistory('assistant', 
+                `<div class="spinner-border spinner-border-sm text-primary"></div> Searching with ${searchType === 'all' ? 'all available sources' : searchType}...`);
             try {
-                const response = await fetch('/followup_question', {
+                // Call API to get search results only (don't generate answer yet)
+                const searchResponse = await fetch('/followup_question', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         analysis_id: analysisId,
                         question: question,
-                        search_type: searchType
+                        search_type: searchType,
+                        generate_answer: false // Don't generate answer yet
                     })
                 });
                 
-                const data = await response.json();
+                const searchData = await searchResponse.json();
+                if (searchData.error) throw new Error(searchData.error);
                 
-                if (data.error) {
-                    throw new Error(data.error);
+                // DISPLAY SEARCH RESULTS BY SERVICE
+                let searchResultsHtml = '<div class="search-results-container">';
+                searchResultsHtml += `<h5>Search Results for "${searchData.question}"</h5>`;
+                
+                // Function to format results from a service
+                const formatServiceResults = (serviceName, results) => {
+                    if (!results || results.length === 0) return '';
+                    
+                    let html = `<div class="service-results">
+                        <h6 class="service-title text-primary">${serviceName} Results:</h6>
+                        <div class="service-items">`;
+                        
+                    results.forEach(result => {
+                        html += `<div class="result-item">
+                            <div class="result-title">
+                                <a href="${result.url}" target="_blank">${result.title}</a>
+                            </div>
+                            <div class="result-url">${result.url}</div>
+                            <div class="result-snippet">${result.snippet}</div>
+                        </div>`;
+                    });
+                    
+                    html += '</div></div>';
+                    return html;
+                };
+                
+                // Add results for each service
+                if (searchData.grouped_results.tavily && searchData.grouped_results.tavily.length > 0) {
+                    searchResultsHtml += formatServiceResults('Tavily', searchData.grouped_results.tavily);
                 }
                 
-                // Display search results if available
-                let answerHtml = data.answer;
+                if (searchData.grouped_results.perplexity && searchData.grouped_results.perplexity.length > 0) {
+                    searchResultsHtml += formatServiceResults('Perplexity', searchData.grouped_results.perplexity);
+                }
                 
-                if (data.search_results && data.search_results.length > 0) {
-                    // Group results by source
-                    const resultsBySource = {};
-                    data.search_results.forEach(result => {
-                        if (!resultsBySource[result.source]) {
-                            resultsBySource[result.source] = [];
+                if (searchData.grouped_results.search1api && searchData.grouped_results.search1api.length > 0) {
+                    searchResultsHtml += formatServiceResults('Search1API', searchData.grouped_results.search1api);
+                }
+                
+                if (searchData.grouped_results.search1api_news && searchData.grouped_results.search1api_news.length > 0) {
+                    searchResultsHtml += formatServiceResults('Search1API News', searchData.grouped_results.search1api_news);
+                }
+                
+                // Add a button to generate the AI summary after seeing results
+                searchResultsHtml += `<div class="mt-3 text-center">
+                    <button class="btn btn-primary generate-summary-btn">
+                        <i class="bi bi-magic"></i> Generate AI Summary
+                    </button>
+                </div>`;
+                
+                searchResultsHtml += '</div>';
+                
+                // Update the message with search results
+                updateLastAssistantMessage(searchResultsHtml);
+                
+                // Add click handler for the generate summary button
+                setTimeout(() => {
+                    document.querySelector('.generate-summary-btn').addEventListener('click', async function() {
+                        // Show loading message
+                        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating summary...';
+                        this.disabled = true;
+                        
+                        try {
+                            // PHASE 2: Generate AI answer using search results
+                            const summaryResponse = await fetch('/followup_question', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    analysis_id: analysisId,
+                                    question: question,
+                                    search_type: searchType,
+                                    generate_answer: true,
+                                    cached_search_results: searchData.search_results
+                                })
+                            });
+                            
+                            const summaryData = await summaryResponse.json();
+                            if (summaryData.error) throw new Error(summaryData.error);
+                            
+                            // Add a new message with the AI summary
+                            addMessageToHistory('assistant', summaryData.answer);
+                            
+                        } catch (error) {
+                            console.error('Error generating summary:', error);
+                            this.innerHTML = '<i class="bi bi-magic"></i> Generate AI Summary';
+                            this.disabled = false;
+                            alert('Error generating summary: ' + error.message);
                         }
-                        resultsBySource[result.source].push(result);
                     });
-                    
-                    answerHtml += '<div class="mt-4"><h6 class="text-muted">Search Sources:</h6>';
-                    
-                    // Display each source group
-                    Object.keys(resultsBySource).forEach(source => {
-                        answerHtml += `<div class="mb-2"><strong class="text-primary">${source}:</strong>`;
-                        answerHtml += '<ul class="search-sources small text-muted">';
-                        resultsBySource[source].forEach(result => {
-                            answerHtml += `<li><a href="${result.url}" target="_blank">${result.title}</a></li>`;
-                        });
-                        answerHtml += '</ul></div>';
-                    });
-                    
-                    answerHtml += '</div>';
-                }
-                
-                // Replace loading message with actual response
-                updateLastAssistantMessage(answerHtml);
+                }, 100);
                 
             } catch (error) {
-                console.error('Error with follow-up question:', error);
-                updateLastAssistantMessage(`<div class="alert alert-danger">Error: ${error.message}</div>`);
+                console.error('Error with search phase:', error);
+                updateLastAssistantMessage(`<div class="alert alert-danger">Error searching: ${error.message}</div>`);
             }
         });
         

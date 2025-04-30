@@ -915,6 +915,8 @@ def followup_question():
     analysis_id = data.get('analysis_id')
     question = data.get('question')
     search_type = data.get('search_type', 'none')  # Options: 'none', 'tavily', 'perplexity', 'search1api', 'all'
+    generate_answer = data.get('generate_answer', False)  # Flag to determine if we should generate answer now
+    cached_search_results = data.get('cached_search_results', [])  # For second-phase calls with cached results
     
     if not analysis_id or not question:
         return jsonify({'error': 'Missing required parameters'}), 400
@@ -947,6 +949,42 @@ def followup_question():
                 conversation_history += f"Q: {conv_data.get('question', '')}\n"
                 conversation_history += f"A: {conv_data.get('answer', '')}\n\n"
             
+            # If we already have cached search results and want to generate answer, skip to generating answer
+            if generate_answer and cached_search_results:
+                search_results = cached_search_results
+                additional_context = ""
+                
+                # Rebuild additional_context from cached results
+                for result in search_results:
+                    source_name = result.get('source', '')
+                    url = result.get('url', '')
+                    title = result.get('title', '')
+                    content = result.get('full_content', result.get('snippet', ''))
+                    
+                    if content:
+                        additional_context += f"\nSource ({source_name}): {url}\nTitle: {title}\nContent:\n{content}\n\n"
+                
+                # Skip to AI answer generation
+                return generate_ai_answer(user_id, analysis_id, company_name, original_analysis, 
+                                         fetched_context, conversation_history, additional_context, 
+                                         question, search_type, search_results)
+            
+            # If we want to generate answer without searching (none option)
+            if search_type == 'none' and generate_answer:
+                search_results = []
+                additional_context = ""
+                return generate_ai_answer(user_id, analysis_id, company_name, original_analysis, 
+                                         fetched_context, conversation_history, additional_context, 
+                                         question, search_type, search_results)
+            
+            # Otherwise, proceed with searches based on search_type
+            all_search_results = {
+                'tavily': [],
+                'perplexity': [],
+                'search1api': [],
+                'search1api_news': []
+            }
+            
             # Get additional context from search if requested
             additional_context = ""
             search_results = []
@@ -968,13 +1006,18 @@ def followup_question():
                         for result in tavily_response['results']:
                             content = result.get('raw_content') or result.get('content')
                             if content:
-                                tavily_context.append(f"Source (Tavily): {result.get('url', 'Unknown')}\nContent:\n{content}\n")
-                                search_results.append({
+                                url = result.get('url', 'Unknown')
+                                title = result.get('title', 'Unknown')
+                                tavily_context.append(f"Source (Tavily): {url}\nTitle: {title}\nContent:\n{content}\n")
+                                search_result = {
                                     'source': 'Tavily',
-                                    'url': result.get('url', 'Unknown'),
-                                    'title': result.get('title', 'Unknown'),
-                                    'snippet': result.get('content', '')[:200] + '...' if result.get('content') else 'No preview available'
-                                })
+                                    'url': url,
+                                    'title': title,
+                                    'snippet': result.get('content', '')[:200] + '...' if result.get('content') else 'No preview available',
+                                    'full_content': content
+                                }
+                                search_results.append(search_result)
+                                all_search_results['tavily'].append(search_result)
                         
                         additional_context += "\n\nAdditional Tavily Search Results:\n\n" + "\n\n".join(tavily_context)
                     
@@ -1020,11 +1063,15 @@ def followup_question():
                         if citations and isinstance(citations, list):
                             for citation in citations:
                                 if isinstance(citation, dict) and citation.get('url'):
-                                    source_urls.append({
+                                    source_result = {
                                         'source': 'Perplexity',
                                         'url': citation.get('url'),
-                                        'title': citation.get('title', citation.get('url'))
-                                    })
+                                        'title': citation.get('title', citation.get('url')),
+                                        'snippet': citation.get('text', '')[:200] + '...' if citation.get('text') else 'No preview available',
+                                        'full_content': citation.get('text', '')
+                                    }
+                                    search_results.append(source_result)
+                                    all_search_results['perplexity'].append(source_result)
                         
                         # If no structured citations, try to parse from text
                         elif "Sources:" in perplexity_content:
@@ -1049,32 +1096,38 @@ def followup_question():
                                     url = line_urls[0]
                                     # Use text before URL as title, or the whole line if no other text
                                     title = line.replace(url, '').strip() or url
-                                    source_urls.append({
+                                    source_result = {
                                         'source': 'Perplexity',
                                         'url': url,
-                                        'title': title
-                                    })
+                                        'title': title,
+                                        'snippet': 'Source from Perplexity search',
+                                        'full_content': main_content
+                                    }
+                                    search_results.append(source_result)
+                                    all_search_results['perplexity'].append(source_result)
                                 elif line and not any(url in line for url in urls):
                                     # This might be a source without URL
-                                    source_urls.append({
+                                    source_result = {
                                         'source': 'Perplexity',
                                         'url': "#",
-                                        'title': line
-                                    })
+                                        'title': line,
+                                        'snippet': 'Source from Perplexity search',
+                                        'full_content': main_content
+                                    }
+                                    search_results.append(source_result)
+                                    all_search_results['perplexity'].append(source_result)
                         
-                        # If still no sources, check if the content looks like a list of URLs
-                        if not source_urls and '\n' in perplexity_content:
-                            lines = perplexity_content.split('\n')
-                            for line in lines:
-                                if line.strip().startswith('http'):
-                                    source_urls.append({
-                                        'source': 'Perplexity',
-                                        'url': line.strip(),
-                                        'title': "Reference"
-                                    })
-                        
-                        # Update the search results
-                        search_results.extend(source_urls)
+                        # If still no sources, add the content as a single result
+                        if not all_search_results['perplexity']:
+                            source_result = {
+                                'source': 'Perplexity',
+                                'url': "#",
+                                'title': "Perplexity Research",
+                                'snippet': main_content[:200] + '...' if len(main_content) > 200 else main_content,
+                                'full_content': main_content
+                            }
+                            search_results.append(source_result)
+                            all_search_results['perplexity'].append(source_result)
                         
                         # Add the content to additional_context
                         additional_context += f"\n\nAdditional Information from Perplexity:\n\n{main_content}\n"
@@ -1086,7 +1139,7 @@ def followup_question():
                     print(f"Error searching Perplexity: {e}")
                     additional_context += "\n\nPerplexity search was attempted but failed."
             
-            # Search1API search for new information if requested (replacing Firecrawl)
+            # Search1API search for new information if requested
             if search_type in ['search1api', 'all'] and SEARCH1API_KEY:
                 try:
                     print(f"Searching Search1API for follow-up information: {company_name} {question}")
@@ -1111,6 +1164,28 @@ def followup_question():
                     search1api_response = requests.post(search1api_url, headers=search1api_headers, json=search1api_payload)
                     search1api_data = search1api_response.json()
                     
+                    # Process search results
+                    if search1api_data and "results" in search1api_data:
+                        search1api_context = []
+                        for result in search1api_data["results"]:
+                            content = result.get('content') or result.get('snippet', '')
+                            if content:
+                                url = result.get('link', 'Unknown')
+                                title = result.get('title', 'Unknown')
+                                search1api_context.append(f"Source (Search1API): {url}\nTitle: {title}\nContent:\n{content}\n")
+                                source_result = {
+                                    'source': 'Search1API',
+                                    'url': url,
+                                    'title': title,
+                                    'snippet': content[:200] + '...' if len(content) > 200 else content,
+                                    'full_content': content
+                                }
+                                search_results.append(source_result)
+                                all_search_results['search1api'].append(source_result)
+                        
+                        if search1api_context:
+                            additional_context += "\n\nAdditional Search1API Results:\n\n" + "\n\n".join(search1api_context)
+                    
                     # Also try the news endpoint for timely information
                     news_url = "https://api.search1api.com/news"
                     news_payload = {
@@ -1126,25 +1201,6 @@ def followup_question():
                     news_response = requests.post(news_url, headers=search1api_headers, json=news_payload)
                     news_data = news_response.json()
                     
-                    # Process search results
-                    if search1api_data and "results" in search1api_data:
-                        search1api_context = []
-                        for result in search1api_data["results"]:
-                            content = result.get('content') or result.get('snippet', '')
-                            if content:
-                                url = result.get('link', 'Unknown')
-                                title = result.get('title', 'Unknown')
-                                search1api_context.append(f"Source (Search1API): {url}\nTitle: {title}\nContent:\n{content}\n")
-                                search_results.append({
-                                    'source': 'Search1API',
-                                    'url': url,
-                                    'title': title,
-                                    'snippet': content[:200] + '...' if len(content) > 200 else content
-                                })
-                        
-                        if search1api_context:
-                            additional_context += "\n\nAdditional Search1API Results:\n\n" + "\n\n".join(search1api_context)
-                    
                     # Process news results
                     if news_data and "results" in news_data:
                         news_context = []
@@ -1154,12 +1210,15 @@ def followup_question():
                                 url = result.get('link', 'Unknown')
                                 title = result.get('title', 'Unknown')
                                 news_context.append(f"Source (Search1API News): {url}\nTitle: {title}\nContent:\n{content}\n")
-                                search_results.append({
+                                source_result = {
                                     'source': 'Search1API News',
                                     'url': url,
                                     'title': title,
-                                    'snippet': content[:200] + '...' if len(content) > 200 else content
-                                })
+                                    'snippet': content[:200] + '...' if len(content) > 200 else content,
+                                    'full_content': content
+                                }
+                                search_results.append(source_result)
+                                all_search_results['search1api_news'].append(source_result)
                         
                         if news_context:
                             additional_context += "\n\nAdditional Search1API News Results:\n\n" + "\n\n".join(news_context)
@@ -1168,96 +1227,121 @@ def followup_question():
                     print(f"Error searching Search1API: {e}")
                     additional_context += "\n\nSearch1API search was attempted but failed."
             
-            # Create the prompt for the follow-up
-            if search_type == 'none':
-                system_prompt = "You are a financial analyst helping with earnings call follow-up questions. Use only the information from the original transcript and analysis to answer."
-            else:
-                system_prompt = "You are a financial analyst helping with earnings call follow-up questions. You must cite your sources for factual information. When you mention a specific fact that comes from the search results, include a numbered citation like [1], [2], etc., and list the complete sources with their URLs at the end of your response. Each source should be clearly numbered to match your citations."
+            # If we're just doing the search phase, return the search results
+            if not generate_answer and search_type != 'none':
+                return jsonify({
+                    'search_results': search_results,
+                    'grouped_results': all_search_results,
+                    'search_type': search_type,
+                    'question': question,
+                    'company_name': company_name,
+                    'analysis_id': analysis_id
+                })
             
-            user_prompt = f"""
-            I previously asked for an analysis of {company_name}'s earnings call, and you provided the following analysis:
-            
-            {original_analysis}
-            
-            The original transcript information was:
-            
-            {fetched_context}
-            
-            Previous questions and answers about this analysis:
-            {conversation_history}
-            """
-            
-            if additional_context:
-                user_prompt += f"""
-                I've performed additional research to help answer this question and found:
-                {additional_context}
-                """
-            
-            user_prompt += f"""
-            Based on all available information, please answer this follow-up question:
-            {question}
-            
-            IMPORTANT FORMATTING INSTRUCTIONS:
-            1. If information is available in the additional search results but wasn't in the original transcript, clearly indicate this new information in your answer.
-            2. For each factual statement, especially numbers, statistics, or specific details from search results, include a numbered citation like [1].
-            3. At the end of your answer, include a "Sources:" section that lists all the references you used, numbered to match your citations.
-            4. For each source, include the full URL so users can verify the information.
-            
-            If you can't find the information to answer this question, please state that clearly.
-            """
-            
-            # Use Claude for follow-up (similar to our main analysis)
-            if os.environ.get("ANTHROPIC_API_KEY"):
-                anthropic_client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+            # Otherwise, generate the AI answer
+            return generate_ai_answer(user_id, analysis_id, company_name, original_analysis, 
+                                     fetched_context, conversation_history, additional_context, 
+                                     question, search_type, search_results)
                 
-                response = anthropic_client.messages.create(
-                    model="claude-3-5-haiku-20241022",
-                    max_tokens=2000,
-                    temperature=0.3, # Lower temperature for more factual responses
-                    system=system_prompt,
-                    messages=[
-                        {"role": "user", "content": user_prompt}
-                    ]
-                )
-                
-                answer = response.content[0].text
-            else:
-                # Fallback to OpenAI if Claude is not available
-                if OPENAI_API_KEY:
-                    openai_client = OpenAI(api_key=OPENAI_API_KEY)
-                    completion = openai_client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        temperature=0.3
-                    )
-                    answer = completion.choices[0].message.content
-                else:
-                    return jsonify({'error': 'No AI service available'}), 500
-            
-            # Save the conversation history
-            db.collection('conversation_threads').document().set({
-                'analysis_id': analysis_id,
-                'user_id': user_id,
-                'question': question,
-                'answer': answer,
-                'search_type': search_type,
-                'search_results': search_results,
-                'timestamp': firestore.SERVER_TIMESTAMP
-            })
-            
-            return jsonify({
-                'answer': answer,
-                'search_results': search_results,
-                'search_type': search_type
-            })
         else:
             return jsonify({'error': 'Database not available'}), 500
             
     except Exception as e:
         print(f"Error processing follow-up question: {e}")
+        return jsonify({'error': str(e)}), 500
+
+def generate_ai_answer(user_id, analysis_id, company_name, original_analysis, fetched_context, 
+                      conversation_history, additional_context, question, search_type, search_results):
+    """Helper function to generate AI answer using search results"""
+    try:
+        # Create the prompt for the follow-up
+        if search_type == 'none':
+            system_prompt = "You are a financial analyst helping with earnings call follow-up questions. Use only the information from the original transcript and analysis to answer."
+        else:
+            system_prompt = "You are a financial analyst helping with earnings call follow-up questions. You must cite your sources for factual information. When you mention a specific fact that comes from the search results, include a numbered citation like [1], [2], etc., and list the complete sources with their URLs at the end of your response. Each source should be clearly numbered to match your citations."
+        
+        user_prompt = f"""
+        I previously asked for an analysis of {company_name}'s earnings call, and you provided the following analysis:
+        
+        {original_analysis}
+        
+        The original transcript information was:
+        
+        {fetched_context}
+        
+        Previous questions and answers about this analysis:
+        {conversation_history}
+        """
+        
+        if additional_context:
+            user_prompt += f"""
+            I've performed additional research to help answer this question and found:
+            {additional_context}
+            """
+        
+        user_prompt += f"""
+        Based on all available information, please answer this follow-up question:
+        {question}
+        
+        IMPORTANT FORMATTING INSTRUCTIONS:
+        1. If information is available in the additional search results but wasn't in the original transcript, clearly indicate this new information in your answer.
+        2. For each factual statement, especially numbers, statistics, or specific details from search results, include a numbered citation like [1].
+        3. At the end of your answer, include a "Sources:" section that lists all the references you used, numbered to match your citations.
+        4. For each source, include the full URL so users can verify the information.
+        
+        If you can't find the information to answer this question, please state that clearly.
+        """
+        
+        # Use Claude for follow-up (similar to our main analysis)
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            anthropic_client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+            
+            response = anthropic_client.messages.create(
+                model="claude-3-5-haiku-20241022",
+                max_tokens=2000,
+                temperature=0.3, # Lower temperature for more factual responses
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_prompt}
+                ]
+            )
+            
+            answer = response.content[0].text
+        else:
+            # Fallback to OpenAI if Claude is not available
+            if OPENAI_API_KEY:
+                openai_client = OpenAI(api_key=OPENAI_API_KEY)
+                completion = openai_client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.3
+                )
+                answer = completion.choices[0].message.content
+            else:
+                return jsonify({'error': 'No AI service available'}), 500
+        
+        # Save the conversation history
+        db.collection('conversation_threads').document().set({
+            'analysis_id': analysis_id,
+            'user_id': user_id,
+            'question': question,
+            'answer': answer,
+            'search_type': search_type,
+            'search_results': search_results,
+            'timestamp': firestore.SERVER_TIMESTAMP
+        })
+        
+        return jsonify({
+            'answer': answer,
+            'search_results': search_results,
+            'search_type': search_type
+        })
+        
+    except Exception as e:
+        print(f"Error generating AI answer: {e}")
         return jsonify({'error': str(e)}), 500
 
 # This standard Python construct checks if the script is being run directly.
