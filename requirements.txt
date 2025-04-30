@@ -3,4 +3,6 @@ tavily-python
 python-dotenv
 openai
 firebase-admin
-gunicorn 
+gunicorn
+google-generativeai 
+anthropic>=0.21.0

@@ -1,0 +1,333 @@
+<!-- templates/earnings_call.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earnings Call Analysis | Partners Research</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+        }
+        .navbar {
+            background-color: #343a40;
+        }
+        .analysis-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-top: 20px;
+        }
+        .result-section {
+            margin-top: 30px;
+            display: none;
+        }
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .save-button {
+            display: none;
+            margin-top: 15px;
+        }
+        .theme-tag {
+            display: inline-block;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            padding: 5px 10px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        .source-block {
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+        .source-url {
+            font-family: monospace;
+            word-break: break-all;
+        }
+        .source-text {
+            white-space: pre-wrap;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        .card-header[data-bs-toggle="collapse"] .bi-chevron-down {
+            transition: transform 0.3s;
+        }
+        .card-header[data-bs-toggle="collapse"][aria-expanded="true"] .bi-chevron-down {
+            transform: rotate(180deg);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">Partners Research</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/"><i class="bi bi-search"></i> Company Search</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/earnings_call"><i class="bi bi-mic-fill"></i> Earnings Call Analysis</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/my_earnings_analyses"><i class="bi bi-collection"></i> My Analyses</a>
+                    </li>
+                </ul>
+                <div class="d-flex">
+                    <a href="/profile" class="btn btn-outline-light me-2"><i class="bi bi-person-circle"></i> Profile</a>
+                    <a href="/logout" class="btn btn-outline-light"><i class="bi bi-box-arrow-right"></i> Logout</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container my-5">
+        <div class="row">
+            <div class="col-lg-8 mx-auto">
+                <div class="analysis-container">
+                    <h1 class="text-center mb-4">Earnings Call Analysis</h1>
+                    <p class="text-center text-muted mb-4">
+                        Get key insights and summaries from the latest company earnings calls.
+                    </p>
+
+                    <!-- Search Form -->
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <form id="earningsForm">
+                                <div class="mb-3">
+                                    <label for="companyName" class="form-label">Company Name</label>
+                                    <input type="text" class="form-control" id="companyName" placeholder="Enter company name (e.g. Apple, Tesla, Microsoft)" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="themes" class="form-label">Focus Themes (Optional)</label>
+                                    <input type="text" class="form-control" id="themes" placeholder="E.g. AI initiatives, revenue growth, future outlook">
+                                    <div class="form-text">Separate multiple themes with commas</div>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-search"></i> Analyze Earnings Call
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Loading Spinner -->
+                    <div class="loading-spinner" id="loadingSpinner">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Analyzing earnings call data. This may take a minute...</p>
+                    </div>
+
+                    <!-- Source Data Collapsible Section -->
+                    <div class="result-section" id="sourceDataSection">
+                        <div class="card mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center" 
+                                data-bs-toggle="collapse" 
+                                href="#sourceDataContent" 
+                                role="button" 
+                                aria-expanded="false" 
+                                aria-controls="sourceDataContent"
+                                style="cursor: pointer;">
+                                <h5 class="mb-0">Source Transcripts & Data</h5>
+                                <i class="bi bi-chevron-down"></i>
+                            </div>
+                            <div class="collapse" id="sourceDataContent">
+                                <div class="card-body">
+                                    <div class="source-content" id="sourceContent">
+                                        <!-- Raw source data will be inserted here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Results Section -->
+                    <div class="result-section" id="resultsSection">
+                        <h2 class="mb-3" id="resultCompanyName"></h2>
+                        <div class="themes-container mb-3" id="themesContainer"></div>
+                        <div class="card">
+                            <div class="card-body">
+                                <div id="analysisContent"></div>
+                                <button id="saveButton" class="btn btn-success save-button">
+                                    <i class="bi bi-bookmark-plus"></i> Save Analysis
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script>
+        // DOM Elements
+        const earningsForm = document.getElementById('earningsForm');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const resultsSection = document.getElementById('resultsSection');
+        const resultCompanyName = document.getElementById('resultCompanyName');
+        const themesContainer = document.getElementById('themesContainer');
+        const analysisContent = document.getElementById('analysisContent');
+        const saveButton = document.getElementById('saveButton');
+        const sourceDataSection = document.getElementById('sourceDataSection');
+        const sourceContent = document.getElementById('sourceContent');
+        
+        // Current search ID from API
+        let currentSearchId = null;
+        
+        // Form submission handler
+        earningsForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            // Get form values
+            const companyName = document.getElementById('companyName').value.trim();
+            const themes = document.getElementById('themes').value.trim();
+            
+            if (!companyName) {
+                alert('Please enter a company name');
+                return;
+            }
+            
+            // Show loading spinner, hide results
+            loadingSpinner.style.display = 'block';
+            resultsSection.style.display = 'none';
+            sourceDataSection.style.display = 'none';
+            saveButton.style.display = 'none';
+            
+            try {
+                // Call the API to analyze the earnings call
+                const response = await fetch('/analyze_earnings_call', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        company_name: companyName,
+                        themes: themes
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Update the UI with the analysis
+                resultCompanyName.textContent = companyName + ' Earnings Call Analysis';
+                analysisContent.innerHTML = data.analysis;
+                
+                // Check if raw source data is available
+                if (data.fetched_context) {
+                    // Format the source data with syntax highlighting
+                    const formattedContext = data.fetched_context
+                        .split('\n\n')
+                        .map(part => {
+                            if (part.startsWith('Source:')) {
+                                // Split into source URL and content
+                                const sourceLines = part.split('\n');
+                                const sourceUrl = sourceLines[0].replace('Source: ', '');
+                                
+                                // Format as a styled block
+                                return `<div class="source-block mb-3">
+                                    <div class="source-url fw-bold text-primary mb-2">${sourceUrl}</div>
+                                    <div class="source-text border-start ps-3 text-muted" style="font-size: 0.9rem;">
+                                        ${sourceLines.slice(1).join('\n')}
+                                    </div>
+                                </div>`;
+                            }
+                            return `<p>${part}</p>`;
+                        })
+                        .join('');
+                    
+                    // Populate the source content
+                    sourceContent.innerHTML = formattedContext;
+                    sourceDataSection.style.display = 'block';
+                } else {
+                    sourceDataSection.style.display = 'none';
+                }
+                
+                // Display themes if provided
+                themesContainer.innerHTML = '';
+                if (themes) {
+                    const themesList = themes.split(',').map(theme => theme.trim()).filter(theme => theme);
+                    themesList.forEach(theme => {
+                        const themeTag = document.createElement('span');
+                        themeTag.className = 'theme-tag';
+                        themeTag.textContent = theme;
+                        themesContainer.appendChild(themeTag);
+                    });
+                }
+                
+                // Save the search ID if available (for logged in users)
+                if (data.search_id) {
+                    currentSearchId = data.search_id;
+                    saveButton.style.display = 'block';
+                }
+                
+                // Hide spinner, show results
+                loadingSpinner.style.display = 'none';
+                resultsSection.style.display = 'block';
+                
+            } catch (error) {
+                // Handle errors
+                loadingSpinner.style.display = 'none';
+                alert('Error analyzing earnings call: ' + error.message);
+            }
+        });
+        
+        // Save button handler
+        saveButton.addEventListener('click', async function() {
+            if (!currentSearchId) {
+                alert('No analysis to save. Please login to save analyses.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/save_earnings_call/${currentSearchId}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                alert('Analysis saved successfully!');
+                saveButton.disabled = true;
+                saveButton.innerHTML = '<i class="bi bi-bookmark-check-fill"></i> Saved';
+                
+            } catch (error) {
+                alert('Error saving analysis: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html> 
