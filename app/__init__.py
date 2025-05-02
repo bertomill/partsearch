@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore
 import tempfile
+from flask_cors import CORS
 
 # Import Firebase config
 from firebase_config import FIREBASE_CONFIG
@@ -19,6 +20,9 @@ db = None
 def create_app():
     # Create the Flask application
     app = Flask(__name__, template_folder='../templates')
+    
+    # Enable CORS for all routes
+    CORS(app)
     
     # Configure the app
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(16))

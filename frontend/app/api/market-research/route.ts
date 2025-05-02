@@ -4,8 +4,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     
-    // In a production environment, this would be an environment variable
-    const backendUrl = 'http://localhost:5000/api/market-research';
+    // Use environment variable for backend URL
+    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082'}/api/market-research`;
     
     // Forward the request to the Flask backend
     const response = await fetch(backendUrl, {
