@@ -1,0 +1,10 @@
+Flask
+tavily-python
+python-dotenv
+openai
+firebase-admin
+gunicorn
+google-generativeai 
+anthropic>=0.21.0
+requests
+flask-cors

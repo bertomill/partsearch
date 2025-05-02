@@ -1,0 +1,299 @@
+<!-- templates/my_earnings_analyses.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Earnings Analyses | Partners Research</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+        }
+        .navbar {
+            background-color: #343a40;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+            margin-bottom: 20px;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .analyses-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-top: 20px;
+        }
+        .theme-tag {
+            display: inline-block;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            padding: 5px 10px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        .favorite-badge {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px 0;
+        }
+        .empty-state i {
+            font-size: 4rem;
+            color: #dee2e6;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">Partners Research</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/"><i class="bi bi-search"></i> Company Search</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/earnings_call"><i class="bi bi-mic-fill"></i> Earnings Call Analysis</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/my_earnings_analyses"><i class="bi bi-collection"></i> My Analyses</a>
+                    </li>
+                </ul>
+                <div class="d-flex">
+                    <a href="/profile" class="btn btn-outline-light me-2"><i class="bi bi-person-circle"></i> Profile</a>
+                    <a href="/logout" class="btn btn-outline-light"><i class="bi bi-box-arrow-right"></i> Logout</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container my-5">
+        <div class="row">
+            <div class="col-lg-10 mx-auto">
+                <div class="analyses-container">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h1>My Earnings Call Analyses</h1>
+                        <a href="/earnings_call" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> New Analysis
+                        </a>
+                    </div>
+                    
+                    <!-- Filters -->
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-5">
+                                    <input type="text" class="form-control" id="companyFilter" placeholder="Filter by company name...">
+                                </div>
+                                <div class="col-md-5">
+                                    <select class="form-select" id="sortOrder">
+                                        <option value="newest">Newest First</option>
+                                        <option value="oldest">Oldest First</option>
+                                        <option value="company_asc">Company Name (A-Z)</option>
+                                        <option value="company_desc">Company Name (Z-A)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <button class="btn btn-outline-secondary w-100" id="applyFilters">
+                                        <i class="bi bi-funnel"></i> Apply
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Loading State -->
+                    <div id="loadingState" class="text-center my-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading your analyses...</p>
+                    </div>
+                    
+                    <!-- Empty State -->
+                    <div id="emptyState" class="empty-state" style="display: none;">
+                        <i class="bi bi-inbox"></i>
+                        <h3>No analyses found</h3>
+                        <p class="text-muted">You haven't created any earnings call analyses yet.</p>
+                        <a href="/earnings_call" class="btn btn-primary mt-3">
+                            Create Your First Analysis
+                        </a>
+                    </div>
+                    
+                    <!-- Analyses List -->
+                    <div id="analysesList">
+                        <!-- Will be populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analysis Item Template (hidden) -->
+    <template id="analysisItemTemplate">
+        <div class="card analysis-item">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <h3 class="company-name mb-2"></h3>
+                    <span class="badge favorite-badge d-none"><i class="bi bi-star-fill"></i> Favorited</span>
+                </div>
+                <div class="text-muted mb-3 analysis-date"></div>
+                <div class="themes-container mb-3"></div>
+                <a href="#" class="btn btn-primary view-analysis-btn">
+                    <i class="bi bi-eye"></i> View Analysis
+                </a>
+            </div>
+        </div>
+    </template>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script>
+        // DOM Elements
+        const companyFilter = document.getElementById('companyFilter');
+        const sortOrder = document.getElementById('sortOrder');
+        const applyFilters = document.getElementById('applyFilters');
+        const analysesList = document.getElementById('analysesList');
+        const loadingState = document.getElementById('loadingState');
+        const emptyState = document.getElementById('emptyState');
+        const analysisItemTemplate = document.getElementById('analysisItemTemplate');
+        
+        // Current analyses data
+        let currentAnalyses = [];
+        
+        // Fetch analyses on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchAnalyses();
+        });
+        
+        // Apply filters when button is clicked
+        applyFilters.addEventListener('click', () => {
+            renderAnalyses();
+        });
+        
+        // Fetch analyses from API
+        async function fetchAnalyses() {
+            loadingState.style.display = 'block';
+            analysesList.innerHTML = '';
+            emptyState.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/my_earnings_analyses');
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                currentAnalyses = data.analyses || [];
+                renderAnalyses();
+                
+            } catch (error) {
+                console.error('Error fetching analyses:', error);
+                analysesList.innerHTML = `<div class="alert alert-danger">Error loading analyses: ${error.message}</div>`;
+            } finally {
+                loadingState.style.display = 'none';
+            }
+        }
+        
+        // Render analyses with current filters
+        function renderAnalyses() {
+            analysesList.innerHTML = '';
+            
+            // Apply filters
+            let filteredAnalyses = [...currentAnalyses];
+            
+            // Company name filter
+            const filterText = companyFilter.value.trim().toLowerCase();
+            if (filterText) {
+                filteredAnalyses = filteredAnalyses.filter(analysis => 
+                    analysis.company_name.toLowerCase().includes(filterText)
+                );
+            }
+            
+            // Apply sorting
+            const sortType = sortOrder.value;
+            filteredAnalyses.sort((a, b) => {
+                switch (sortType) {
+                    case 'newest':
+                        return new Date(b.timestamp) - new Date(a.timestamp);
+                    case 'oldest':
+                        return new Date(a.timestamp) - new Date(b.timestamp);
+                    case 'company_asc':
+                        return a.company_name.localeCompare(b.company_name);
+                    case 'company_desc':
+                        return b.company_name.localeCompare(a.company_name);
+                    default:
+                        return 0;
+                }
+            });
+            
+            // Show empty state if no analyses match filters
+            if (filteredAnalyses.length === 0) {
+                emptyState.style.display = 'block';
+                return;
+            }
+            
+            // Render each analysis
+            filteredAnalyses.forEach(analysis => {
+                const analysisElement = document.importNode(analysisItemTemplate.content, true);
+                
+                // Set company name
+                analysisElement.querySelector('.company-name').textContent = analysis.company_name;
+                
+                // Set date
+                const date = new Date(analysis.timestamp);
+                analysisElement.querySelector('.analysis-date').textContent = date.toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                // Set themes
+                const themesContainer = analysisElement.querySelector('.themes-container');
+                if (analysis.themes) {
+                    const themesList = analysis.themes.split(',').map(theme => theme.trim()).filter(theme => theme);
+                    themesList.forEach(theme => {
+                        const themeTag = document.createElement('span');
+                        themeTag.className = 'theme-tag';
+                        themeTag.textContent = theme;
+                        themesContainer.appendChild(themeTag);
+                    });
+                }
+                
+                // Set favorite badge
+                if (analysis.favorited) {
+                    analysisElement.querySelector('.favorite-badge').classList.remove('d-none');
+                }
+                
+                // Set link
+                analysisElement.querySelector('.view-analysis-btn').href = `/view_earnings_analysis/${analysis.id}`;
+                
+                // Add to list
+                analysesList.appendChild(analysisElement);
+            });
+        }
+    </script>
+</body>
+</html> 

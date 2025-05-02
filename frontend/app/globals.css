@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --primary: #1976d2;
+  --primary-dark: #0d47a1;
+  --secondary: #9c27b0;
+  --secondary-dark: #7b1fa2;
+  --error: #d32f2f;
+  --warning: #ed6c02;
+  --info: #0288d1;
+  --success: #2e7d32;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-secondary: var(--secondary);
+  --color-secondary-dark: var(--secondary-dark);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-roboto: var(--font-roboto);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --primary: #90caf9;
+    --primary-dark: #42a5f5;
+    --secondary: #ce93d8;
+    --secondary-dark: #ab47bc;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-roboto, 'Roboto', Arial, sans-serif);
+}
+
+/* Add some basic styles for Material UI integration */
+.MuiButton-root {
+  text-transform: none;
+}
+
+/* Custom Tailwind Classes */
+@layer components {
+  .container-lg {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+}
